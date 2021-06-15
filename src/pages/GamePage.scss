@@ -1,0 +1,25 @@
+.game-page {
+  .board {
+    margin-top: 50px;
+    margin-bottom: 50px;
+
+    .board-row {
+      display: flex;
+      width: 300px;
+
+      .board-col {
+        width: 100px;
+        height: 100px;
+        box-shadow: 0 0 0 1px black;
+
+        &.clickable {
+          cursor: pointer;
+
+          &:hover {
+            box-shadow: 0 0 2px 3px lightgrey;
+          }
+        }
+      }
+    }
+  }
+}

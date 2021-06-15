@@ -1,26 +1,76 @@
 import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import './App.scss';
+import {createBrowserHistory} from 'history';
+import {
+    Router,
+    Route,
+} from 'react-router-dom';
+import {GamesPage} from "./pages/GamesPage";
+import {GamePage} from "./pages/GamePage";
+import Cookies from "js-cookie";
+import axios from "axios";
+import {PlayerInput} from "./components/PlayerInput";
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+export const history = createBrowserHistory();
+
+export const BACKEND_API = 'http://localhost:3000'
+
+export class App extends React.Component {
+    state = {
+        playerName: Cookies.get('player-name'), // inputted name, acts as authentication key
+        player: {}, // self
+    }
+
+    componentDidMount() {
+        if (this.state.playerName) {
+            this.fetchPlayer();
+        }
+    }
+
+    fetchPlayer() {
+        axios.get(BACKEND_API + '/self?player_name=' + this.state.playerName).then(resp => {
+            this.setState({...this.state, player: resp.data});
+        });
+    }
+
+    inputPlayer(playerName: string) {
+        console.log('player', playerName);
+        axios.post(BACKEND_API + '/players', {
+            player_name: playerName
+        }).then(resp => {
+            const playerName = resp.data.player_name;
+            Cookies.set('player-name', playerName);
+            this.setState({...this.state, playerName});
+        }).catch(err => {
+            console.log('err', err);
+        });
+    }
+
+    render() {
+        return (
+            <div className={'container mt-5'}>
+                {(Cookies.get('player-name') == null) ? (
+                    <PlayerInput inputCallback={playerName => {
+                        this.inputPlayer.bind(this)(playerName)
+                    }}/>
+                ) : null}
+                <Router history={history}>
+                    <Route
+                        exact path='/games/:id'
+                        render={props => (
+                            <GamePage
+                                gameId={props.match.params.id}
+                                player={this.state.player}
+                                history={history}/>
+                        )}/>
+                    <Route exact path='/'>
+                        <GamesPage
+                            player={this.state.player}
+                            history={history}
+                        />
+                    </Route>
+                </Router>
+            </div>
+        );
+    }
 }
-
-export default App;

@@ -1,1 +1,1 @@
-declare module "react-actioncable-provider"
+declare module "@rails/actioncable";

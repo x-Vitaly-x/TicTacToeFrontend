@@ -10,10 +10,9 @@ import {GamePage} from "./pages/GamePage";
 import Cookies from "js-cookie";
 import axios from "axios";
 import {PlayerInput} from "./components/PlayerInput";
+import {BACKEND_API} from "./backbone/Game";
 
 export const history = createBrowserHistory();
-
-export const BACKEND_API = 'http://localhost:3000'
 
 export class App extends React.Component {
     state = {

@@ -1,24 +1,40 @@
 import React from "react";
-import Cookies from "js-cookie";
 import axios from "axios";
-import {PlayerInput} from "../components/PlayerInput";
-import {BACKEND_API} from "../App";
+import {createConsumer} from '@rails/actioncable';
+import {GamesCollection, Game, BACKEND_API} from "../backbone/Game";
 
 export class GamesPage extends React.Component<{
     history: any,
     player: any,
 }> {
     state = {
-        games: [] // game list
+        games: new GamesCollection()
     }
+
+    consumer: any;
 
     componentDidMount() {
         this.fetchGames();
+        const URL = 'ws://localhost:3000/cable';
+        this.consumer = createConsumer(URL);
+        this.consumer.subscriptions.create({
+            channel: 'GameUpdatesChannel',
+        }, {
+            connected: () => console.log('connected'),
+            disconnected: () => console.log('disconnected'),
+            received: this.handleReceived.bind(this),
+        });
     }
 
+    componentWillUnmount() {
+        this.consumer.disconnect()
+    };
+
     fetchGames() {
-        axios.get(BACKEND_API + '/games').then(resp => {
-            this.setState({...this.state, games: resp.data});
+        this.state.games.fetch().then(() => {
+            this.setState({
+                games: new GamesCollection(this.state.games.models)
+            });
         });
     }
 
@@ -27,29 +43,23 @@ export class GamesPage extends React.Component<{
             game: {
                 player_name: this.props.player.player_name
             }
-        }).then(resp => {
-            console.log(resp);
         });
+        // no need for then handler, actioncable updates will happen anyway
     }
 
-    joinGame(game: any) {
-        if (
-            game.x_player_id === this.props.player['id'] ||
-            game.y_player_id === this.props.player['id']
-        ) {
-            // already joined, go to game directly
-            this.props.history.push('/games/' + game['id'])
-        } else {
-            // join as second player
-            axios.put(BACKEND_API + '/games/' + game['id'], {
-                game: {
-                    y_player_id: this.props.player['id']
-                }
-            }).then(resp => {
-                // go to game
-                this.props.history.push('/games/' + game['id'])
-            });
-        }
+    // go to game
+    openGame(game: any) {
+        this.props.history.push('/games/' + game['id'])
+    }
+
+    // either find old game data and update it or add new entry to game list
+    handleReceived(data: any) {
+        console.log('RECEIVED', data);
+        this.state.games.remove(data.id);
+        this.state.games.add(data);
+        this.setState({
+            games: new GamesCollection(this.state.games.models)
+        });
     }
 
     render() {
@@ -60,25 +70,24 @@ export class GamesPage extends React.Component<{
                     games and sign onto games of other players.
                 </h4>
                 <div className={'row mt-3'}>
-                    {this.state.games.map(game => (
+                    {this.state.games.models.map((game: typeof Game) => (
                         <div
                             className={'col-4 mb-2'}
-                            key={'game_' + game['id']}
+                            key={'game_' + game.attributes.id}
                         >
                             <div
                                 className='card'
                             >
                                 <div className="card-body">
                                     <h5 className="card-title">
-                                        Game {game['id']}&nbsp;
-                                        ({game['y_player_id'] ? 2 : 1} / 2)
+                                        Game {game.attributes.id}&nbsp;
+                                        ({game.attributes.y_player_id ? 2 : 1} / 2)
                                     </h5>
                                     <button
-                                        onClick={() => this.joinGame.bind(this)(game)}
-                                        disabled={game['status'] !== 'created'}
+                                        onClick={() => this.openGame.bind(this)(game)}
                                         className="btn btn-primary"
                                     >
-                                        Join
+                                        Go
                                     </button>
                                 </div>
                             </div>

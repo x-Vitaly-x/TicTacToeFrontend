@@ -1,8 +1,9 @@
 import React from "react";
 import axios from "axios";
-import ActionCable from 'actioncable';
-import {BACKEND_API} from "../App";
+
 import './GamePage.scss';
+import {Game, BACKEND_API} from "../backbone/Game";
+import {createConsumer} from "@rails/actioncable";
 
 export interface IBoard {
     current_sign: string;
@@ -17,75 +18,126 @@ export interface IGamePageProps {
 
 export class GamePage extends React.Component<IGamePageProps> {
     state = {
-        game: {
-            status: '',
-        }
+        game: new Game({
+            id: this.props.gameId
+        })
     }
 
-    cable: any;
-    subscription: any;
+    consumer: any;
 
     constructor(props: IGamePageProps) {
         super(props);
-        this.cable = ActionCable.createConsumer('ws://localhost:3000/cable');
-        this.subscription = this.cable.subscriptions.create('test_channel', {
-            received: (data: any) => {
-                console.log("MESSAGE", data);
-            }
-        });
     }
 
     componentDidMount() {
         // get game
-        axios.get(BACKEND_API + '/games/' + this.props.gameId).then(resp => {
-            this.setState({...this.state, game: resp.data});
+        this.state.game.fetch().then((gameData: any) => {
+            this.setState({...this.state, game: new Game(gameData)});
+        });
+        // setup cable
+        const URL = 'ws://localhost:3000/cable';
+        this.consumer = createConsumer(URL);
+        this.consumer.subscriptions.create({
+            channel: 'GameUpdatesChannel',
+        }, {
+            connected: () => console.log('connected'),
+            disconnected: () => console.log('disconnected'),
+            received: this.handleReceived.bind(this),
         });
     }
 
     makeMove(x: number, y: number) {
-
+        if (!this.isMyTurn()) {
+            return;
+        }
+        axios.put(`${BACKEND_API}/games/${this.props.gameId}/make_move`, {
+            game: {placement: [x, y]}
+        })
     }
 
-    handleReceived(message: any) {
-        console.log('xXXX', message);
+    handleReceived(gameData: any) {
+        console.log('MESSAGE CAUGHT!', gameData);
+        this.setState({...this.state, game: new Game(gameData)});
+    }
+
+    isMyTurn() {
+        const game = this.state.game as any;
+        const board = game.attributes.board as IBoard;
+        return (
+            (board.current_sign === 'X' && game.attributes.x_player_id === this.props.player.id) ||
+            (board.current_sign === 'O' && game.attributes.y_player_id === this.props.player.id)
+        )
     }
 
     render() {
-        console.log('xxxx', this.subscription);
-        const board = (this.state.game as any)['board'] as IBoard;
+        const game = this.state.game as any;
+        const board = game.attributes.board as IBoard;
+        if (board) {
+        } else {
+            return (
+                <h4>Loading...</h4>
+            )
+        }
+        const currentSign = this.isMyTurn() ? 'your turn' : 'opponents turn';
         return (
-            <div className="game-page">
-                <button onClick={() => {
-                    axios.get(BACKEND_API + '/test');
-                }}>
-                    test
-                </button>
-                {{
-                    created: <h4>Waiting for other player...</h4>,
-                    started: <h4>Game started</h4>
-                }[this.state.game.status]}
-                {board ? (
-                    <div className={'board'}>
-                        {board.board_fields.map((boardRow, indexRow) => (
-                            <div className={'board-row'} key={'row_' + indexRow}>
-                                {boardRow.map((boardCol, indexCol) => (
-                                    <div
-                                        onClick={
-                                            boardCol === null ?
-                                                () => this.makeMove.bind(this)(indexCol, indexRow) :
-                                                () => null // can not click on occupied tiles
-                                        }
-                                        className={'board-col ' + (boardCol === null ? 'clickable' : '')}
-                                        key={'col_' + indexRow + '_' + indexCol}
-                                    >
-                                        {boardCol}
-                                    </div>
-                                ))}
-                            </div>
-                        ))}
-                    </div>
-                ) : null}
-            </div>
+            <>
+                <div className="game-page">
+                    {({
+                        created: <h4>Waiting for other player...</h4>,
+                        started: <h4>Game started, {currentSign}.</h4>,
+                        finished: <h4>Game won!</h4>
+                    } as any)[this.state.game.attributes.status]}
+                    <h4>
+                        Player X:&nbsp;
+                        {this.state.game.attributes.player_X ? (
+                            this.state.game.attributes.player_X.player_name
+                        ) : (
+                            <button className={'btn btn-primary'} onClick={() => {
+                                this.state.game.save({
+                                    x_player_id: this.props.player.id
+                                });
+                            }}>
+                                Join
+                            </button>
+                        )}
+                    </h4>
+                    <h4>
+                        Player O:&nbsp;
+                        {this.state.game.attributes.player_O ? (
+                            this.state.game.attributes.player_O.player_name
+                        ) : (
+                            <button className={'btn btn-primary'} onClick={() => {
+                                this.state.game.save({
+                                    y_player_id: this.props.player.id
+                                });
+                            }}>
+                                Join
+                            </button>
+                        )}
+                    </h4>
+                    {board ? (
+                        <div className={'board'}>
+                            {board.board_fields.map((boardRow, indexRow) => (
+                                <div className={'board-row'} key={'row_' + indexRow}>
+                                    {boardRow.map((boardCol, indexCol) => (
+                                        <div
+                                            onClick={
+                                                boardCol === '' ?
+                                                    () => this.makeMove.bind(this)(indexCol, indexRow) :
+                                                    () => null // can not click on occupied tiles
+                                            }
+                                            className={'board-col ' + (boardCol === '' ? 'clickable' : '')}
+                                            key={'col_' + indexRow + '_' + indexCol}
+                                        >
+                                            {boardCol}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
+            </>
         )
     }
 
